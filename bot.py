@@ -2,11 +2,25 @@ import time
 import telebot
 import random
 import sqlite3
+from threading import Thread
+from flask import Flask
 
+# ===== ФЛASK ДЛЯ RENDER (ЧТОБЫ БЫЛ ПОРТ) =====
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Бот работает!"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=10000)
+
+Thread(target=run_flask).start()
+
+# ===== ТОКЕН И АДМИНЫ =====
 TOKEN = '8848646166:AAGtIokIDI-kS7ANW0ZOyjUjppNrDp0iS5w'  # ВСТАВЬ СВОЙ ТОКЕН!
 bot = telebot.TeleBot(TOKEN)
 
-# ===== АДМИНЫ (ДОБАВЛЯЙ ID ЧЕРЕЗ ЗАПЯТУЮ) =====
 ADMIN_IDS = [7712380726]  # ЗАМЕНИ НА СВОЙ ID!
 
 # ===== БАЗА ДАННЫХ =====
@@ -143,7 +157,7 @@ def find_user_by_id(user_id):
 
 init_db()
 
-# ===== КОМАНДА /START =====
+# ===== КОМАНДЫ =====
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     user_id = message.from_user.id
@@ -163,33 +177,25 @@ def send_welcome(message):
                           f"/top - топ игроков\n"
                           f"/help - помощь")
 
-# ===== HELP =====
 @bot.message_handler(commands=['help'])
 def help_command(message):
     bot.reply_to(message, "🎲 Доступные команды:\n\n"
-                          "💰 ЭКОНОМИКА:\n"
-                          "/work - работа (20-60 монет, раз в 30 мин)\n"
+                          "💰 ЭКОНОМИКА:\n/work - работа (20-60 монет, раз в 30 мин)\n"
                           "/daily - ежедневный бонус (200-300 монет)\n"
                           "/give [@username] [сумма] - подарить монеты\n"
                           "/balance - баланс\n"
                           "/top - топ игроков\n\n"
-                          "🎲 ИГРЫ:\n"
-                          "/casino [сумма] - казино (ставка 50-1000)\n"
+                          "🎲 ИГРЫ:\n/casino [сумма] - казино (ставка 50-1000)\n"
                           "/coin [сумма] [орел/решка] - монетка\n\n"
-                          "📊 ПРОФИЛЬ:\n"
-                          "/stats - статистика игр\n\n"
-                          "👑 АДМИН-КОМАНДЫ:\n"
-                          "/addmoney [@username] [сумма] - добавить\n"
-                          "/removemoney [@username] [сумма] - забрать")
+                          "📊 ПРОФИЛЬ:\n/stats - статистика игр\n\n"
+                          "👑 АДМИН:\n/addmoney [@username] [сумма]\n/removemoney [@username] [сумма]")
 
-# ===== BALANCE =====
 @bot.message_handler(commands=['balance'])
 def balance_command(message):
     user_id = message.from_user.id
     user = get_user(user_id)
     bot.reply_to(message, f"💰 Ваш баланс: {user['balance']} монет")
 
-# ===== WORK =====
 @bot.message_handler(commands=['work'])
 def work_command(message):
     user_id = message.from_user.id
@@ -212,7 +218,6 @@ def work_command(message):
 
     bot.reply_to(message, f"💼 Вы отработали смену и получили {salary} монет!\n💰 Баланс: {new_balance} монет")
 
-# ===== CASINO =====
 @bot.message_handler(commands=['casino'])
 def casino_command(message):
     user_id = message.from_user.id
@@ -272,7 +277,6 @@ def casino_command(message):
     bot.reply_to(message, msg)
     add_history(user_id, "Казино", win - bet)
 
-# ===== COIN =====
 @bot.message_handler(commands=['coin'])
 def coin_command(message):
     user_id = message.from_user.id
@@ -320,7 +324,6 @@ def coin_command(message):
         bot.reply_to(message, f"🪙 Выпало: {result}!\n😵 Вы проиграли {bet} монет!\n💰 Новый баланс: {new_balance}")
         add_history(user_id, "Орел/Решка", -bet)
 
-# ===== DAILY =====
 @bot.message_handler(commands=['daily'])
 def daily_command(message):
     user_id = message.from_user.id
@@ -343,7 +346,6 @@ def daily_command(message):
 
     bot.reply_to(message, f"🎁 Вы получили ежедневный бонус {bonus} монет!\n💰 Баланс: {new_balance} монет")
 
-# ===== GIVE =====
 @bot.message_handler(commands=['give'])
 def give_command(message):
     user_id = message.from_user.id
@@ -406,7 +408,6 @@ def give_command(message):
     except:
         pass
 
-# ===== STATS =====
 @bot.message_handler(commands=['stats'])
 def stats_command(message):
     user_id = message.from_user.id
@@ -420,7 +421,6 @@ def stats_command(message):
                           f"📈 Процент побед: {int(user['games_won'] / max(1, user['games_played']) * 100)}%\n"
                           f"💰 Баланс: {user['balance']} монет")
 
-# ===== TOP =====
 @bot.message_handler(commands=['top'])
 def top_command(message):
     conn = sqlite3.connect('users.db')
@@ -440,7 +440,7 @@ def top_command(message):
 
     bot.reply_to(message, top_text)
 
-# ===== АДМИН-КОМАНДА /ADDMONEY =====
+# ===== АДМИН-КОМАНДЫ =====
 @bot.message_handler(commands=['addmoney'])
 def add_money(message):
     user_id = message.from_user.id
@@ -498,7 +498,6 @@ def add_money(message):
     except:
         pass
 
-# ===== АДМИН-КОМАНДА /REMOVEMONEY =====
 @bot.message_handler(commands=['removemoney'])
 def remove_money(message):
     user_id = message.from_user.id
