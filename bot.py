@@ -36,7 +36,8 @@ def init_db():
             daily_bonus_time INTEGER DEFAULT 0,
             games_played INTEGER DEFAULT 0,
             games_won INTEGER DEFAULT 0,
-            games_lost INTEGER DEFAULT 0
+            games_lost INTEGER DEFAULT 0,
+            registered_at INTEGER DEFAULT 0
         )
     ''')
     cursor.execute('''
@@ -56,7 +57,7 @@ def get_user(user_id, username=None):
     cursor = conn.cursor()
     cursor.execute('''
         SELECT balance, last_work_time, username, daily_bonus_time,
-               games_played, games_won, games_lost
+               games_played, games_won, games_lost, registered_at
         FROM users WHERE user_id = ?
     ''', (user_id,))
     result = cursor.fetchone()
@@ -76,7 +77,8 @@ def get_user(user_id, username=None):
             'daily_bonus_time': result[3] or 0,
             'games_played': result[4] or 0,
             'games_won': result[5] or 0,
-            'games_lost': result[6] or 0
+            'games_lost': result[6] or 0,
+            'registered_at': result[7] or 0
         }
     else:
         conn = sqlite3.connect('users.db')
@@ -84,9 +86,9 @@ def get_user(user_id, username=None):
         cursor.execute('''
             INSERT INTO users
             (user_id, balance, last_work_time, username, daily_bonus_time,
-             games_played, games_won, games_lost)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (user_id, 0, 0, username or '', 0, 0, 0, 0))
+             games_played, games_won, games_lost, registered_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, 0, 0, username or '', 0, 0, 0, 0, int(time.time())))
         conn.commit()
         conn.close()
         return {
@@ -96,7 +98,8 @@ def get_user(user_id, username=None):
             'daily_bonus_time': 0,
             'games_played': 0,
             'games_won': 0,
-            'games_lost': 0
+            'games_lost': 0,
+            'registered_at': int(time.time())
         }
 
 def update_balance(user_id, new_balance):
@@ -139,6 +142,14 @@ def add_history(user_id, action, amount):
     conn.commit()
     conn.close()
 
+def get_total_earned(user_id):
+    conn = sqlite3.connect('users.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT SUM(amount) FROM history WHERE user_id = ? AND amount > 0', (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result[0] else 0
+
 def find_user_by_username(username):
     conn = sqlite3.connect('users.db')
     cursor = conn.cursor()
@@ -172,6 +183,7 @@ def send_welcome(message):
                           f"/coin [сумма] [орел/решка] - монетка\n"
                           f"/daily - ежедневный бонус\n"
                           f"/give [@username] [сумма] - подарить\n"
+                          f"/profile - мой профиль\n"
                           f"/stats - статистика\n"
                           f"/balance - баланс\n"
                           f"/top - топ игроков\n"
@@ -187,7 +199,8 @@ def help_command(message):
                           "/top - топ игроков\n\n"
                           "🎲 ИГРЫ:\n/casino [сумма] - казино (ставка 50-1000)\n"
                           "/coin [сумма] [орел/решка] - монетка\n\n"
-                          "📊 ПРОФИЛЬ:\n/stats - статистика игр\n\n"
+                          "📊 ПРОФИЛЬ:\n/profile - мой профиль\n"
+                          "/stats - статистика игр\n\n"
                           "👑 АДМИН:\n/addmoney [@username] [сумма]\n/removemoney [@username] [сумма]")
 
 @bot.message_handler(commands=['balance'])
@@ -195,6 +208,30 @@ def balance_command(message):
     user_id = message.from_user.id
     user = get_user(user_id)
     bot.reply_to(message, f"💰 Ваш баланс: {user['balance']} монет")
+
+@bot.message_handler(commands=['profile'])
+def profile_command(message):
+    user_id = message.from_user.id
+    username = message.from_user.username or 'Нет юзернейма'
+    first_name = message.from_user.first_name or 'Нет имени'
+    user = get_user(user_id, username)
+    total_earned = get_total_earned(user_id)
+    
+    if user['registered_at'] > 0:
+        reg_date = time.strftime('%d.%m.%Y %H:%M', time.localtime(user['registered_at']))
+    else:
+        reg_date = 'Неизвестно'
+    
+    bot.reply_to(message, f"👤 ВАШ ПРОФИЛЬ:\n\n"
+                          f"🆔 ID: {user_id}\n"
+                          f"📛 Имя: {first_name}\n"
+                          f"🔹 Юзернейм: @{username}\n"
+                          f"📅 Регистрация: {reg_date}\n"
+                          f"💰 Баланс: {user['balance']} монет\n"
+                          f"💵 Всего заработано: {total_earned} монет\n"
+                          f"🎮 Сыграно игр: {user['games_played']}\n"
+                          f"🏆 Побед: {user['games_won']}\n"
+                          f"💀 Поражений: {user['games_lost']}")
 
 @bot.message_handler(commands=['work'])
 def work_command(message):
@@ -543,44 +580,4 @@ def remove_money(message):
             target_id = int(target)
             user = get_user(target_id)
             target_name = f"@{user['username']}" if user['username'] else target
-        except:
-            bot.reply_to(message, "❌ Пользователь не найден!")
-            return
-
-    user = get_user(target_id)
-    if user['balance'] < amount:
-        bot.reply_to(message, f"❌ У игрока {target_name} только {user['balance']} монет!")
-        return
-
-    new_balance = user['balance'] - amount
-    update_balance(target_id, new_balance)
-    add_history(target_id, "Админ снятие", -amount)
-
-    bot.reply_to(message, f"✅ Забрано {amount} монет у {target_name}!\n💰 Новый баланс: {new_balance}")
-
-    try:
-        bot.send_message(target_id, f"⚠️ У вас забрали {amount} монет! Ваш баланс: {new_balance}")
-    except:
-        pass
-
-# ===== АВТООТВЕТЧИК =====
-@bot.message_handler(func=lambda message: True)
-def auto_reply(message):
-    user_id = message.from_user.id
-    if user_id in ADMIN_IDS:
-        return
-
-    try:
-        bot.forward_message(ADMIN_IDS[0], user_id, message.message_id)
-    except:
-        pass
-
-    bot.reply_to(message, "📌 Используйте команды:\n/start - меню\n/help - все команды")
-
-# ===== ЗАПУСК =====
-while True:
-    try:
-        bot.infinity_polling(timeout=10, long_polling_timeout=5)
-    except Exception as e:
-        print(f"Ошибка: {e}. Перезапуск через 5 сек...")
-        time.sleep(5)
+        exce
